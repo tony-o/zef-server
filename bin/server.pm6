@@ -152,8 +152,8 @@ $rest.all(
   },
   / ^ '/search' '/'? $ / => sub ($q, $s, $n) {
     $s.close('{ "failure": 1, "reason": "what are you looking for" }'), return unless $q.data.exists_key('query'); 
-    my @owners   = @($orm.search('users', { username => $q.data<query> }).all).map({ .id; });
-    my @packages = reduce(@($orm.search('packages', { '-or' => [ owner => [@owners], name => $q.data<query> ] }).all).map({
+    my @owners   = @($orm.search('users', { username => ('-like' => "\%{$q.data<query>}%") }).all).map({ .id }), $q.data<query>;
+    my @packages = reduce(@($orm.search('packages', { '-or' => [ owner => [@owners], name => ( '-like' => "\%{$q.data<query>}%" ) ] }).all).map({
       [ 
         name      => .get('name'),
         owner     => .get('owner'),
