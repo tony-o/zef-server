@@ -1,0 +1,8 @@
+{
+  "meta": {
+    "name":"acme::data",
+    "repository":"git@github.com:tony-o/perl6-http-server-async-plugins-router-simple.git",
+    "version":"0.7"
+  },
+  "key": "V8LPG0T16SYQCF9UDNZBEMO5I3JKRWAH47X2"
+}

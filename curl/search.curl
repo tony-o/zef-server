@@ -1,0 +1,3 @@
+#!/bin/sh
+
+curl --data @search.data 127.0.0.1:8080/search && echo
