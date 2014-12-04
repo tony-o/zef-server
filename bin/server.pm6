@@ -4,6 +4,7 @@ use HTTP::Server::Async;
 use HTTP::Server::Async::Plugins::Router::Simple;
 use DB::ORM::Quicky;
 use JSON::Tiny;
+use Digest::SHA;
 
 my $host = '0.0.0.0';
 my $port = 8080;
@@ -11,8 +12,10 @@ my $rest = HTTP::Server::Async::Plugins::Router::Simple.new;
 my $serv = HTTP::Server::Async.new(:$host, :$port);
 my $orm  = DB::ORM::Quicky.new;
 
-sub sha256($password is rw) {
-  return $password;
+sub hhash($str) {
+  CATCH { .say; }
+  'here'.say;
+  [~] $str.list>>.fmt: '%02x';
 }
 
 $orm.connect(
@@ -54,7 +57,8 @@ $rest.all(
   / ^ '/login' '/'? $ / => sub ($q, $s, $n) {
     $s.headers<Content-Type> = 'application/json';
     if $q.data.exists_key('username') && $q.data.exists_key('password') {
-      $q.data<password> = sha256($q.data<password> ~ 'salt');
+      $q.data<password> = hhash(sha256($q.data<password> ~ 'salt'));
+      CATCH { .say; }
       my $query = $orm.search('users', { username => $q.data<username>, password => $q.data<password> });
       my $user  = $query.first;
       if Any !~~ $user {
@@ -71,25 +75,23 @@ $rest.all(
     $n(False);
   },
   / ^ '/register' '/'? $ / => sub ($q, $s, $n) {
-    if $q.data.exists_key('username') && $q.data.exists_key('password') {
-      $q.data<password> = sha256($q.data<password> ~ 'salt');
-      my $query = $orm.search('users', { username => $q.data<username>, password => $q.data<password> });
-      my $user  = $query.first;
-      if Any !~~ $user {
-        $s.close("\{ \"failure\": 1, \"reason\": \"username already used\" \}");
-      } else {
-        my $newuser = $orm.create('users');
-        my $ticket  = ('A'..'Z', 0..9).pick(64).join;
-        $newuser.set({
-          username => 'ZEF:' ~ $q.data<username>,
-          password => $q.data<password>,
-          uq       => $ticket,
-        });
-        $newuser.save;
-        $s.close("\{ \"success\": 1, \"newkey\": \"$ticket\" \}");
-      }
+    $s.close('{ "failure": 1, "reason": "supply a username/password" }'), return if any qw<username password>.map({ $q.data.exists_key($_) ?? False !! True });
+    $q.data<password> = hhash(sha256($q.data<password> ~ 'salt'));
+      
+    my $query = $orm.search('users', { username => $q.data<username> });
+    my $user  = $query.first;
+    if Any !~~ $user {
+      $s.close("\{ \"failure\": 1, \"reason\": \"username already used\" \}");
     } else {
-      $s.close('{ "failure": 1, "reason": "supply a username/password" }');
+      my $newuser = $orm.create('users');
+      my $ticket  = ('A'..'Z', 0..9).pick(64).join;
+      $newuser.set({
+        username => 'ZEF:' ~ $q.data<username>,
+        password => $q.data<password>,
+        uq       => $ticket,
+      });
+      $newuser.save;
+      $s.close("\{ \"success\": 1, \"newkey\": \"$ticket\" \}");
     }
   },
   / ^ '/testresult' '/'? $ / => sub ($q, $s, $n) {
