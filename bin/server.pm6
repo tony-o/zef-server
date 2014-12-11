@@ -5,6 +5,9 @@ use HTTP::Server::Async::Plugins::Router::Simple;
 use DB::ORM::Quicky;
 use JSON::Tiny;
 use Digest::SHA;
+use Template::Mustache;
+use lib '.';
+use extensionslookup;
 
 my $host = '0.0.0.0';
 my $port = 8080;
@@ -14,7 +17,6 @@ my $orm  = DB::ORM::Quicky.new;
 
 sub hhash($str) {
   CATCH { .say; }
-  'here'.say;
   [~] $str.list>>.fmt: '%02x';
 }
 
@@ -27,11 +29,17 @@ $orm.connect(
 
 $serv.register(sub ($q, $s, $n) {
   await $q.promise;
+  $s.headers<Connection> = 'close';
   try {
-    $q.data = from-json($q.data) or die 'dead';
+    if defined($q.data) && $q.data.chars > 0 {
+      $q.data = from-json($q.data) or die 'dead';
+    } else {
+      $q.data = %();
+    }
     $n(True);
     CATCH {
       default {
+        $s.status = 500;
         $s.close('{ "failure": 1, "reason": "Invalid JSON received" }'); 
         $n(False);
       }
@@ -187,6 +195,25 @@ $rest.all(
     }));
     $s.close(@packages.perl);
   },
+  / ^ '/' $ / => sub ($q, $s, $n) {
+    $s.close(Template::Mustache.render('templates/main.mustache'.IO.slurp, {})); 
+  },
+  / ^ '/' / => sub ($q, $s, $n) {
+    if "./static{$q.uri}".IO ~~ :f  && "./static{$q.uri}".IO.abspath.Str.match(/ ^ {"./static".IO.abspath.Str} /) {
+      try {
+        #%EXTENSIONLOOKUP.perl.say;
+        my $ext = $q.uri.match(/ '.' \w+ $ /).Str;
+        $s.headers{'Content-Type'} = %EXTENSIONLOOKUP{$ext} // 'text/plain';
+        $s.close("./static{$q.uri}".IO.slurp);
+        CATCH {
+          .say;
+          default { $n(True); }
+        }
+      };
+    } else {
+      $n(True);
+    }
+  }
 );
 
 $rest.hook($serv);
