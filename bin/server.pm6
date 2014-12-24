@@ -14,6 +14,7 @@ my $port = 8080;
 my $rest = HTTP::Server::Async::Plugins::Router::Simple.new;
 my $serv = HTTP::Server::Async.new(:$host, :$port);
 my $orm  = DB::ORM::Quicky.new;
+my $tmpl = Template::Mustache.new(:from<./templates>);
 
 sub hhash($str) {
   CATCH { .say; }
@@ -26,6 +27,18 @@ $orm.connect(
     database => './zef.sqlite3',
   ),
 );
+
+$serv.register(sub ($q, $s, $n) {
+  #handle query string
+  try {
+    my @parts = $q.uri.split('?', 2);
+    my @vars  = @parts.elems > 0 ?? "{@parts[1]}".split('&') !! @();
+    $q.uri = @parts[0];
+    $q.data  = to-json(%(@vars.map({ my $pair = $_.split('=',2); $pair.elems == 2 ?? $pair !! $pair[0] => '' }))) if @vars.elems > 0;
+    CATCH { default { } }
+  };
+  $n();
+});
 
 $serv.register(sub ($q, $s, $n) {
   await $q.promise;
@@ -196,7 +209,8 @@ $rest.all(
     $s.close(@packages.perl);
   },
   / ^ '/' $ / => sub ($q, $s, $n) {
-    $s.close(Template::Mustache.render('templates/main.mustache'.IO.slurp, {})); 
+    '/'.say;
+    $s.close($tmpl.render('main', { :title<index> })); 
   },
   / ^ '/' / => sub ($q, $s, $n) {
     if "./static{$q.uri}".IO ~~ :f  && "./static{$q.uri}".IO.abspath.Str.match(/ ^ {"./static".IO.abspath.Str} /) {
@@ -223,4 +237,5 @@ $serv.register(sub ($q,$s,$n){
 });
 
 $serv.listen;
+"listening $host:$port".say;
 $serv.block;
